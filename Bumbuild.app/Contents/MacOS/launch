@@ -1,0 +1,24 @@
+#!/bin/bash
+# Universal Flutter Build Tool — Entry Point
+# Place the Bumbuild/ folder in the root of any Flutter project and
+# double-click "Bumbuild.app" to run.
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+RESOURCES="$DIR/../Resources"
+TOOL_DIR="$(cd "$DIR/../../.." && pwd)"
+PROJECT_DIR="$(cd "$TOOL_DIR/.." && pwd)"
+
+# Check that we are inside a Flutter project
+if [ ! -f "$PROJECT_DIR/pubspec.yaml" ]; then
+  osascript -e 'display alert "⚠️ Not a Flutter Project" message "Place the Bumbuild/ folder in the root of a Flutter project (next to pubspec.yaml)." as critical'
+  exit 1
+fi
+
+# Ensure keys/ folder exists
+mkdir -p "$TOOL_DIR/keys"
+
+# Set execute permissions on all scripts
+chmod +x "$RESOURCES/gui.sh" "$RESOURCES/build.sh" "$RESOURCES/android_setup.sh" 2>/dev/null
+
+# Run GUI
+"$RESOURCES/gui.sh" "$PROJECT_DIR" "$RESOURCES" "$TOOL_DIR"

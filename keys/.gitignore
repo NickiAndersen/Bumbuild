@@ -1,0 +1,8 @@
+# Keystore files for Android signing
+# This folder is auto-detected by Bumbuild
+*.jks
+*.keystore
+*.p12
+*.pepk
+!.gitignore
+!README.md
