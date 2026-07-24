@@ -1,6 +1,6 @@
 #!/bin/bash
 # ╔══════════════════════════════════════════════════╗
-# ║  Universal Flutter Build Tool — GUI              ║
+# ║  Bumbuild, GUI                                 ║
 # ╚══════════════════════════════════════════════════╝
 PROJECT_DIR="$1"
 RESOURCES="$2"
@@ -12,13 +12,24 @@ VERSION=$(grep "^version:" pubspec.yaml | sed "s/version: *//")
 BASE_VER=$(echo "$VERSION" | sed "s/+[0-9]*$//")
 BUILD_NUM=$(echo "$VERSION" | sed "s/.*+//")
 
-# Detect available platforms
+V_MAJ=$(echo "$BASE_VER" | cut -d. -f1)
+V_MIN=$(echo "$BASE_VER" | cut -d. -f2)
+V_PAT=$(echo "$BASE_VER" | cut -d. -f3)
+[ -z "$V_PAT" ] && V_PAT=0
+
+NEXT_BLD=$((BUILD_NUM + 1))
+
+if [ "$V_PAT" -eq 99 ]; then
+  NEXT_BUMP_VER="${V_MAJ}.$((V_MIN + 1)).0+${NEXT_BLD}"
+else
+  NEXT_BUMP_VER="${V_MAJ}.${V_MIN}.$((V_PAT + 1))+${NEXT_BLD}"
+fi
+
 HAS_IOS=false
 HAS_ANDROID=false
 [ -d "ios" ] && HAS_IOS=true
 [ -d "android" ] && HAS_ANDROID=true
 
-# Detect Android signing status
 SIGNING_STATUS="Not configured"
 KEYS_DIR="$TOOL_DIR/keys"
 if [ -f "android/key.properties" ]; then
@@ -32,19 +43,13 @@ if [ -f "android/key.properties" ]; then
   fi
 fi
 
-# Build platform info string
 PLAT_INFO=""
 $HAS_IOS && PLAT_INFO="iOS"
 $HAS_ANDROID && { [ -n "$PLAT_INFO" ] && PLAT_INFO="$PLAT_INFO, Android" || PLAT_INFO="Android"; }
 
-# ════════════════════════════════════════════════════
-#  MAIN DIALOG — One smart screen
-# ════════════════════════════════════════════════════
-
-# Build button list for platforms
 if $HAS_IOS && $HAS_ANDROID; then
   PLAT_BUTTONS='"iOS", "Android", "Both"'
-  PLAT_DEFAULT='"iOS"'
+  PLAT_DEFAULT='"Both"'
 elif $HAS_IOS; then
   PLAT_BUTTONS='"iOS"'
   PLAT_DEFAULT='"iOS"'
@@ -52,11 +57,14 @@ elif $HAS_ANDROID; then
   PLAT_BUTTONS='"Android"'
   PLAT_DEFAULT='"Android"'
 else
-  osascript -e 'display alert "⚠️ No Platforms" message "Neither ios/ nor android/ folder found in this project." as critical'
+  osascript -e 'display alert "No Platforms" message "Neither ios/ nor android/ folder found in this project." as critical'
   exit 1
 fi
 
-RESULT=$(osascript <<EOT
+# ════════════════════════════════════════════════════
+#  STEP 1, Welcome
+# ════════════════════════════════════════════════════
+WELCOME=$(osascript <<EOT
   tell application "System Events"
     activate
     set appIcon to missing value
@@ -66,62 +74,112 @@ RESULT=$(osascript <<EOT
   end tell
 
   set dialogText to "┌─────────────────────────────────┐
-│  📱  $APP_NAME
-│  📦  Version: $VERSION
-│  🖥️  Platforms: $PLAT_INFO
-│  🔑  Android Signing: $SIGNING_STATUS
-└─────────────────────────────────┘
-
-Choose build platform:"
+│  App            $APP_NAME
+│  Version        $VERSION
+│  Platforms      $PLAT_INFO
+│  Signing        $SIGNING_STATUS
+└─────────────────────────────────┘"
 
   try
-    set platformChoice to button returned of (display alert "Flutter Build Tool" message dialogText buttons {$PLAT_BUTTONS} default button $PLAT_DEFAULT)
+    set welcomeChoice to button returned of (display alert "Flutter Build Tool" message dialogText buttons {"Cancel", "Build ▸"} default button "Build ▸")
+    return welcomeChoice
   on error
-    return "CANCEL"
+    return "Cancel"
   end try
-
-  -- Ask bump type
-  try
-    set bumpChoice to button returned of (display alert "Version Bump" message "Current: $VERSION
-
-How to bump?" buttons {"Cancel", "Minor  ($BASE_VER → " & "$((${BASE_VER%%.*})).$(( $(echo $BASE_VER | cut -d. -f2) + 1)).0" & ")", "Build +1  (+" & "$(($BUILD_NUM + 1))" & ")"} default button 3)
-  on error
-    return "CANCEL"
-  end try
-
-  if bumpChoice is "Cancel" then return "CANCEL"
-
-  return platformChoice & "|" & bumpChoice
 EOT
 )
+[ "$WELCOME" == "Cancel" ] && exit 0
 
-if [ "$RESULT" == "CANCEL" ] || [ -z "$RESULT" ]; then exit 0; fi
+# ════════════════════════════════════════════════════
+#  STEP 2, Platform
+# ════════════════════════════════════════════════════
+PLATFORM=$(osascript <<EOT
+  try
+    set platformChoice to button returned of (display alert "Choose Platform" message "Which platform to build?" buttons {$PLAT_BUTTONS} default button $PLAT_DEFAULT)
+    return platformChoice
+  on error
+    return "Cancel"
+  end try
+EOT
+)
+[ "$PLATFORM" == "Cancel" ] && exit 0
 
-# Parse result
-PLATFORM=$(echo "$RESULT" | cut -d'|' -f1)
-BUMP_RAW=$(echo "$RESULT" | cut -d'|' -f2)
+# ════════════════════════════════════════════════════
+#  STEP 3, Version bump (choose from list)
+# ════════════════════════════════════════════════════
+BUMP_CHOICE=$(osascript <<EOT
+  try
+    set choiceList to {"Rebuild       →  $VERSION", "New Version   →  $NEXT_BUMP_VER", "Custom…"}
+    set theChoice to choose from list choiceList with prompt "Current version: $VERSION" with title "Version Bump" default items {item 1 of choiceList}
+    if theChoice is false then return "Cancel"
+    return item 1 of theChoice
+  on error
+    return "Cancel"
+  end try
+EOT
+)
+[ "$BUMP_CHOICE" == "Cancel" ] && exit 0
 
-# Normalize bump choice
-if echo "$BUMP_RAW" | grep -qi "Build"; then
-  BUMP="Build +1"
+# ════════════════════════════════════════════════════
+#  STEP 3b, Custom version input
+# ════════════════════════════════════════════════════
+if echo "$BUMP_CHOICE" | grep -q "Custom"; then
+  CUSTOM_VER=""
+  while [ -z "$CUSTOM_VER" ]; do
+    CUSTOM_INPUT=$(osascript <<EOT
+      try
+        display dialog "Enter version:" default answer "$NEXT_BUMP_VER" with title "Custom Version" buttons {"Cancel", "OK"} default button "OK"
+        return text returned of result
+      on error
+        return "Cancel"
+      end try
+EOT
+    )
+    [ "$CUSTOM_INPUT" == "Cancel" ] && exit 0
+
+    if ! echo "$CUSTOM_INPUT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$'; then
+      osascript -e 'display alert "Invalid Format" message "Use the format: 1.2.3+42" as critical'
+      continue
+    fi
+
+    CUSTOM_BASE=$(echo "$CUSTOM_INPUT" | sed 's/+[0-9]*$//')
+    CUSTOM_BLD=$(echo "$CUSTOM_INPUT" | sed 's/.*+//')
+
+    CUSTOM_MAJ=$(echo "$CUSTOM_BASE" | cut -d. -f1)
+    CUSTOM_MIN=$(echo "$CUSTOM_BASE" | cut -d. -f2)
+    CUSTOM_PAT=$(echo "$CUSTOM_BASE" | cut -d. -f3)
+
+    if [ "$CUSTOM_MAJ" -lt "$V_MAJ" ] || \
+       { [ "$CUSTOM_MAJ" -eq "$V_MAJ" ] && [ "$CUSTOM_MIN" -lt "$V_MIN" ]; } || \
+       { [ "$CUSTOM_MAJ" -eq "$V_MAJ" ] && [ "$CUSTOM_MIN" -eq "$V_MIN" ] && [ "$CUSTOM_PAT" -lt "$V_PAT" ]; } || \
+       { [ "$CUSTOM_MAJ" -eq "$V_MAJ" ] && [ "$CUSTOM_MIN" -eq "$V_MIN" ] && [ "$CUSTOM_PAT" -eq "$V_PAT" ] && [ "$CUSTOM_BLD" -le "$BUILD_NUM" ]; }; then
+       osascript -e "display alert \"Version Too Low\" message \"Must be higher than current version ($VERSION).\" as critical"
+      continue
+    fi
+
+    CUSTOM_VER=$CUSTOM_INPUT
+  done
+  BUMP="Custom:${CUSTOM_VER}"
+  PREVIEW_VER="$CUSTOM_VER"
+elif echo "$BUMP_CHOICE" | grep -q "Rebuild"; then
+  BUMP="Rebuild"
+  PREVIEW_VER="$VERSION"
 else
-  BUMP="Minor +0.1"
+  BUMP="Bump"
+  PREVIEW_VER="$NEXT_BUMP_VER"
 fi
 
-# Normalize platform
-if [ "$PLATFORM" == "Both" ]; then PLATFORM="Begge"; fi
-
 # ════════════════════════════════════════════════════
-#  ANDROID SIGNING — Required gate
+#  STEP 4, Android signing gate
 # ════════════════════════════════════════════════════
-if [ "$PLATFORM" == "Android" ] || [ "$PLATFORM" == "Begge" ]; then
+if [ "$PLATFORM" == "Android" ] || [ "$PLATFORM" == "Both" ]; then
   ANDROID_READY=false
 
   while ! $ANDROID_READY; do
     if [ ! -f "android/key.properties" ]; then
       SETUP=$(osascript <<EOT
         try
-          display alert "🔑 Android Signing Required" message "A release build needs a signing key.
+          display alert "Android Signing Required" message "A release build needs a signing key.
 
 This takes about 1 minute to set up." buttons {"Cancel", "Set Up Now"} default button "Set Up Now" as critical
           return button returned of result
@@ -131,7 +189,7 @@ This takes about 1 minute to set up." buttons {"Cancel", "Set Up Now"} default b
 EOT
       )
       if [ "$SETUP" == "Cancel" ]; then
-        if [ "$PLATFORM" == "Begge" ]; then
+        if [ "$PLATFORM" == "Both" ]; then
           SWITCH=$(osascript <<EOT
             try
               display alert "Skip Android?" message "Build only iOS instead?" buttons {"Cancel All", "Build iOS Only"} default button "Build iOS Only"
@@ -155,12 +213,11 @@ EOT
         [ -f "android/key.properties" ] && ANDROID_READY=true
       fi
     else
-      # Already configured — show and allow change
       CUR_ALIAS=$(grep "keyAlias" android/key.properties 2>/dev/null | sed 's/keyAlias=//')
       CUR_STORE=$(basename "$(grep 'storeFile' android/key.properties 2>/dev/null | sed 's/storeFile=//')" 2>/dev/null)
       KEYACTION=$(osascript <<EOT
         try
-          display alert "🔑 Android Signing" message "Current configuration:
+          display alert "Android Signing" message "Current configuration:
 
     Alias:       $CUR_ALIAS
     Keystore:  $CUR_STORE
@@ -182,41 +239,35 @@ EOT
 fi
 
 # ════════════════════════════════════════════════════
-#  PREVIEW & CONFIRM
+#  STEP 5, Confirm
 # ════════════════════════════════════════════════════
-# Calculate new version for preview
-CUR_VER="$VERSION"
-CUR_BASE=$(echo "$CUR_VER" | sed "s/+[0-9]*$//")
-CUR_BLD=$(echo "$CUR_VER" | sed "s/.*+//")
-if [ "$BUMP" == "Build +1" ]; then
-  PREVIEW_VER="${CUR_BASE}+$(($CUR_BLD + 1))"
-else
-  P_MAJ=$(echo "$CUR_BASE" | cut -d. -f1)
-  P_MIN=$(echo "$CUR_BASE" | cut -d. -f2)
-  PREVIEW_VER="${P_MAJ}.$(($P_MIN + 1)).0+$(($CUR_BLD + 1))"
-fi
-
-if [ "$PLATFORM" == "Begge" ]; then
+if [ "$PLATFORM" == "Both" ]; then
   PLAT_TXT="iOS + Android"
 else
   PLAT_TXT="$PLATFORM"
 fi
 
+if [ "$BUMP" == "Rebuild" ]; then
+  BUMP_LABEL="No change"
+else
+  BUMP_LABEL="$VERSION  →  $PREVIEW_VER"
+fi
+
 CONFIRM=$(osascript <<EOT
   try
-    display alert "🚀 Ready to Build" message "
-    App:            $APP_NAME
-    Version:      $CUR_VER  →  $PREVIEW_VER
+    display alert "Ready to Build" message "
+    App:           $APP_NAME
+    Version:      $BUMP_LABEL
     Platform:     $PLAT_TXT
 
-This will update pubspec.yaml and start the build process. A Terminal window will open so you can follow progress." buttons {"Cancel", "Build Now  🔨"} default button "Build Now  🔨"
+This will update pubspec.yaml and start the build in a Terminal window." buttons {"Cancel", "Build Now"} default button "Build Now"
     return button returned of result
   on error
     return "Cancel"
   end try
 EOT
 )
-if [ "$CONFIRM" == "Cancel" ]; then exit 0; fi
+[ "$CONFIRM" == "Cancel" ] && exit 0
 
 # ════════════════════════════════════════════════════
 #  LAUNCH BUILD IN TERMINAL
@@ -225,8 +276,7 @@ osascript <<EOT
   tell application "Terminal"
     activate
     do script "cd '$PROJECT_DIR' && '$RESOURCES/build.sh' '$BUMP' '$PLATFORM' '$PROJECT_DIR'"
-    -- Set a nice window title
     delay 0.5
-    set custom title of front window to "$APP_NAME — Building $PLAT_TXT..."
+    set custom title of front window to "$APP_NAME, Building $PLAT_TXT..."
   end tell
 EOT

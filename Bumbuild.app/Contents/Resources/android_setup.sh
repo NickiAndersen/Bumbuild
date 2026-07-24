@@ -1,5 +1,5 @@
 #!/bin/bash
-# Universal Flutter Build Tool — Android Signing Setup Wizard
+# Universal Flutter Build Tool, Android Signing Setup Wizard
 PROJECT_DIR="$1"
 TOOL_DIR="$2"
 KEYS_DIR="$TOOL_DIR/keys"
@@ -63,7 +63,7 @@ if [ "$HAS_KEY" == "Use from keys/" ]; then
   if [ "$FOUND_COUNT" -eq 1 ]; then
     KEYSTORE=$(echo "$FOUND_KEYS" | head -1)
   else
-    # Multiple keystores — show dropdown
+    # Multiple keystores, show dropdown
     APPLESCRIPT_KLIST=""
     FIRST_KEY=""
     while IFS= read -r kf; do
@@ -278,7 +278,7 @@ EOT
     -alias "$ALIAS" \
     -storepass "$STORE_PASS" \
     -keypass "$KEY_PASS" \
-    -dname "CN=$APP_NAME, OU=Mobile, O=$APP_NAME, L=Copenhagen, S=Denmark, C=DK" \
+    -dname "CN=$APP_NAME, O=$APP_NAME" \
     2>/dev/null
 
   if [ $? -ne 0 ]; then
@@ -307,8 +307,61 @@ KEYEOF
 GRADLE_KTS="android/app/build.gradle.kts"
 GRADLE_GROOVY="android/app/build.gradle"
 
+# When BOTH .gradle and .gradle.kts exist, Gradle uses the Groovy (.gradle) file.
+# We must detect this conflict and patch the file Gradle actually uses.
+if [ -f "$GRADLE_GROOVY" ] && [ -f "$GRADLE_KTS" ]; then
+  echo "⚠️  Both build.gradle and build.gradle.kts found, Gradle uses build.gradle"
+fi
+
+# ─── Patch Groovy build.gradle (Gradle prefers this when both exist) ───
+if [ -f "$GRADLE_GROOVY" ]; then
+  if ! grep -q "key.properties" "$GRADLE_GROOVY"; then
+    cp "$GRADLE_GROOVY" "${GRADLE_GROOVY}.bak"
+
+    # Insert keystore loading BEFORE "android {" block
+    sed -i '' '/^android {/i\
+\
+def keystoreProperties = new Properties()\
+def keystorePropertiesFile = rootProject.file("key.properties")\
+if (keystorePropertiesFile.exists()) {\
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\
+}\
+' "$GRADLE_GROOVY"
+
+    # Insert signingConfigs BEFORE "buildTypes {" block
+    sed -i '' '/buildTypes {/i\
+    signingConfigs {\
+        release {\
+            keyAlias keystoreProperties["keyAlias"]\
+            keyPassword keystoreProperties["keyPassword"]\
+            storeFile keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null\
+            storePassword keystoreProperties["storePassword"]\
+        }\
+    }\
+' "$GRADLE_GROOVY"
+  fi
+
+  # Always ensure release signing is used (even if file was previously patched)
+  if grep -q 'signingConfigs.debug' "$GRADLE_GROOVY"; then
+    sed -i '' 's/signingConfigs.debug/signingConfigs.release/g' "$GRADLE_GROOVY"
+  fi
+
+  # Verify signing was correctly configured
+  if ! grep -q 'signingConfigs.release' "$GRADLE_GROOVY"; then
+    if grep -q 'buildTypes' "$GRADLE_GROOVY" && grep -q 'signingConfigs' "$GRADLE_GROOVY"; then
+      sed -i '' '/release {/a\
+            signingConfig signingConfigs.release
+' "$GRADLE_GROOVY"
+    fi
+  fi
+
+  if ! grep -q 'signingConfigs.release' "$GRADLE_GROOVY"; then
+    osascript -e 'display alert "⚠️ Signing Warning" message "Could not automatically configure release signing in build.gradle. You may need to set signingConfig manually." as critical'
+  fi
+fi
+
+# ─── Also patch .kts if it exists (so both files stay in sync) ───
 if [ -f "$GRADLE_KTS" ]; then
-  # Kotlin DSL (.kts)
   if ! grep -q "key.properties" "$GRADLE_KTS"; then
     cp "$GRADLE_KTS" "${GRADLE_KTS}.bak"
 
@@ -339,41 +392,30 @@ if (keystorePropertiesFile.exists()) {\
         }\
     }\
 ' "$GRADLE_KTS"
-
-    # Replace debug signing with release signing
-    sed -i '' 's/signingConfigs.getByName("debug")/signingConfigs.getByName("release")/' "$GRADLE_KTS"
   fi
 
-elif [ -f "$GRADLE_GROOVY" ]; then
-  # Groovy DSL (.gradle)
-  if ! grep -q "key.properties" "$GRADLE_GROOVY"; then
-    cp "$GRADLE_GROOVY" "${GRADLE_GROOVY}.bak"
-
-    # Insert keystore loading BEFORE "android {" block
-    sed -i '' '/^android {/i\
-\
-def keystoreProperties = new Properties()\
-def keystorePropertiesFile = rootProject.file("key.properties")\
-if (keystorePropertiesFile.exists()) {\
-    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\
-}\
-' "$GRADLE_GROOVY"
-
-    # Insert signingConfigs BEFORE "buildTypes {" block
-    sed -i '' '/buildTypes {/i\
-    signingConfigs {\
-        release {\
-            keyAlias keystoreProperties["keyAlias"]\
-            keyPassword keystoreProperties["keyPassword"]\
-            storeFile file(keystoreProperties["storeFile"])\
-            storePassword keystoreProperties["storePassword"]\
-        }\
-    }\
-' "$GRADLE_GROOVY"
-
-    # Replace debug signing with release signing
-    sed -i '' 's/signingConfigs.debug/signingConfigs.release/' "$GRADLE_GROOVY"
+  # Always ensure release signing is used (even if file was previously patched)
+  if grep -q 'signingConfigs.getByName("debug")' "$GRADLE_KTS"; then
+    sed -i '' 's/signingConfigs.getByName("debug")/signingConfigs.getByName("release")/g' "$GRADLE_KTS"
   fi
+
+  # Verify signing was correctly configured
+  if ! grep -q 'signingConfigs.getByName("release")' "$GRADLE_KTS"; then
+    if grep -q 'buildTypes' "$GRADLE_KTS" && grep -q 'signingConfigs' "$GRADLE_KTS"; then
+      sed -i '' '/release {/a\
+            signingConfig = signingConfigs.getByName("release")
+' "$GRADLE_KTS"
+    fi
+  fi
+
+  # Only warn for .kts if .gradle doesn't exist (otherwise .gradle is the one that matters)
+  if [ ! -f "$GRADLE_GROOVY" ] && ! grep -q 'signingConfigs.getByName("release")' "$GRADLE_KTS"; then
+    osascript -e 'display alert "⚠️ Signing Warning" message "Could not automatically configure release signing in build.gradle.kts. You may need to set signingConfig manually." as critical'
+  fi
+fi
+
+if [ ! -f "$GRADLE_GROOVY" ] && [ ! -f "$GRADLE_KTS" ]; then
+  osascript -e 'display alert "⚠️ No build.gradle" message "Neither build.gradle nor build.gradle.kts was found in android/app/. Signing config could not be applied." as critical'
 fi
 
 osascript <<EOT

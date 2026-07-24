@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Keystore files for Android signing
+*.jks
+*.keystore
+*.p12
+*.pepk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+*.zip
+
+# Local design files
+PNG/
+PSD/
+
+# Screenshot source files (slideshow.gif is the combined version)
+screenshots/*.png

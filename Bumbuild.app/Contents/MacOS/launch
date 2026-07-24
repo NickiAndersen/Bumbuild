@@ -1,5 +1,5 @@
 #!/bin/bash
-# Universal Flutter Build Tool — Entry Point
+# Universal Flutter Build Tool, Entry Point
 # Place the Bumbuild/ folder in the root of any Flutter project and
 # double-click "Bumbuild.app" to run.
 

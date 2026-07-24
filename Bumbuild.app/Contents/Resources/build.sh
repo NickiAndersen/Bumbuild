@@ -1,6 +1,6 @@
 #!/bin/bash
 # ╔══════════════════════════════════════════════════╗
-# ║  Universal Flutter Build Tool — Build Runner     ║
+# ║  Bumbuild, Build Runner                        ║
 # ╚══════════════════════════════════════════════════╝
 BUMP="$1"
 PLATFORM="$2"
@@ -21,7 +21,6 @@ BG_GREEN='\033[42m'
 BG_RED='\033[41m'
 WHITE='\033[1;37m'
 
-# ─── Helpers ───
 header() {
   echo ""
   echo -e "${BG_BLUE}${WHITE}                                                    ${RESET}"
@@ -90,25 +89,43 @@ CUR=$(grep "^version:" pubspec.yaml | sed "s/version: *//")
 BASE=$(echo "$CUR" | sed "s/+[0-9]*$//")
 BLD=$(echo "$CUR" | sed "s/.*+//")
 
-if [ "$BUMP" == "Build +1" ]; then
-  NEW_VER="${BASE}+$(($BLD + 1))"
+if [[ "$BUMP" == Custom:* ]]; then
+  NEW_VER="${BUMP#Custom:}"
+elif [ "$BUMP" == "Rebuild" ]; then
+  NEW_VER="$CUR"
+elif [ "$BUMP" == "Bump" ]; then
+  MAJ=$(echo "$BASE" | cut -d. -f1)
+  MIN=$(echo "$BASE" | cut -d. -f2)
+  PAT=$(echo "$BASE" | cut -d. -f3)
+  [ -z "$PAT" ] && PAT=0
+  if [ "$PAT" -eq 99 ]; then
+    NEW_VER="${MAJ}.$((MIN + 1)).0+$((BLD + 1))"
+  else
+    NEW_VER="${MAJ}.${MIN}.$((PAT + 1))+$((BLD + 1))"
+  fi
 else
   MAJ=$(echo "$BASE" | cut -d. -f1)
   MIN=$(echo "$BASE" | cut -d. -f2)
-  NEW_VER="${MAJ}.$(($MIN + 1)).0+$(($BLD + 1))"
+  NEW_VER="${MAJ}.$((MIN + 1)).0+$((BLD + 1))"
 fi
 
-sed -i.bak "s/^version: .*/version: $NEW_VER/" pubspec.yaml
-rm -f pubspec.yaml.bak
+if [ "$BUMP" != "Rebuild" ]; then
+  sed -i.bak "s/^version: .*/version: $NEW_VER/" pubspec.yaml
+  rm -f pubspec.yaml.bak
+fi
 
 # ═══════════════════════════════════════════════════
 #  HEADER
 # ═══════════════════════════════════════════════════
 clear
-header "$APP_NAME — Flutter Build"
+header "$APP_NAME, Flutter Build"
 
 echo -e "  ${DIM}App${RESET}         ${BOLD}$APP_NAME${RESET}"
-echo -e "  ${DIM}Version${RESET}     ${YELLOW}$CUR${RESET}  →  ${GREEN}${BOLD}$NEW_VER${RESET}"
+if [ "$BUMP" == "Rebuild" ]; then
+  echo -e "  ${DIM}Version${RESET}     ${YELLOW}$CUR${RESET}  (rebuild)"
+else
+  echo -e "  ${DIM}Version${RESET}     ${YELLOW}$CUR${RESET}  →  ${GREEN}${BOLD}$NEW_VER${RESET}"
+fi
 echo -e "  ${DIM}Platform${RESET}    ${BOLD}$PLATFORM${RESET}"
 echo -e "  ${DIM}Flutter${RESET}     ${DIM}$FLUTTER_VER${RESET}"
 echo -e "  ${DIM}Started${RESET}     $(date '+%H:%M:%S')${RESET}"
@@ -121,11 +138,11 @@ SUCCESS_ANDROID=true
 # ═══════════════════════════════════════════════════
 #  2. iOS BUILD
 # ═══════════════════════════════════════════════════
-if [ "$PLATFORM" == "iOS" ] || [ "$PLATFORM" == "Begge" ]; then
-  section "📱 iOS — flutter build ipa --release"
+if [ "$PLATFORM" == "iOS" ] || [ "$PLATFORM" == "Both" ]; then
+  section "📱 iOS, flutter build ipa --release --obfuscate"
   IOS_START=$SECONDS
 
-  flutter build ipa --release 2>&1 | tee build/ios_build.log
+  flutter build ipa --release --obfuscate --split-debug-info=build/debug-info 2>&1 | tee build/ios_build.log
   if [ ${PIPESTATUS[0]} -ne 0 ]; then SUCCESS_IOS=false; fi
 
   IOS_TIME=$(($SECONDS - $IOS_START))
@@ -139,11 +156,29 @@ fi
 # ═══════════════════════════════════════════════════
 #  3. ANDROID BUILD
 # ═══════════════════════════════════════════════════
-if [ "$PLATFORM" == "Android" ] || [ "$PLATFORM" == "Begge" ]; then
-  section "🤖 Android — flutter build appbundle --release"
+if [ "$PLATFORM" == "Android" ] || [ "$PLATFORM" == "Both" ]; then
+
+  GRADLE_KTS="android/app/build.gradle.kts"
+  GRADLE_GROOVY="android/app/build.gradle"
+  if [ -f "android/key.properties" ]; then
+    if [ -f "$GRADLE_GROOVY" ]; then
+      if grep -q 'signingConfigs.debug' "$GRADLE_GROOVY"; then
+        echo -e "  ${YELLOW}⚠ Fixing: build.gradle still uses debug signing, patching to release${RESET}"
+        sed -i '' 's/signingConfigs.debug/signingConfigs.release/g' "$GRADLE_GROOVY"
+      fi
+    fi
+    if [ -f "$GRADLE_KTS" ]; then
+      if grep -q 'signingConfigs.getByName("debug")' "$GRADLE_KTS"; then
+        echo -e "  ${YELLOW}⚠ Fixing: build.gradle.kts still uses debug signing, patching to release${RESET}"
+        sed -i '' 's/signingConfigs.getByName("debug")/signingConfigs.getByName("release")/g' "$GRADLE_KTS"
+      fi
+    fi
+  fi
+
+  section "🤖 Android, flutter build appbundle --release --obfuscate"
   ANDROID_START=$SECONDS
 
-  flutter build appbundle --release 2>&1 | tee build/android_build.log
+  flutter build appbundle --release --obfuscate --split-debug-info=build/debug-info 2>&1 | tee build/android_build.log
   if [ ${PIPESTATUS[0]} -ne 0 ]; then SUCCESS_ANDROID=false; fi
 
   ANDROID_TIME=$(($SECONDS - $ANDROID_START))
@@ -162,7 +197,7 @@ HAS_ERROR=false
 RESULT_MSG=""
 RESULT_LINES=""
 
-if [ "$PLATFORM" == "iOS" ] || [ "$PLATFORM" == "Begge" ]; then
+if [ "$PLATFORM" == "iOS" ] || [ "$PLATFORM" == "Both" ]; then
   if $SUCCESS_IOS; then
     RESULT_LINES="${RESULT_LINES}\n  ${GREEN}  ✅  iOS         →  build/ios/ipa/${RESET}"
     open build/ios/ipa/ 2>/dev/null
@@ -174,7 +209,7 @@ if [ "$PLATFORM" == "iOS" ] || [ "$PLATFORM" == "Begge" ]; then
   fi
 fi
 
-if [ "$PLATFORM" == "Android" ] || [ "$PLATFORM" == "Begge" ]; then
+if [ "$PLATFORM" == "Android" ] || [ "$PLATFORM" == "Both" ]; then
   if $SUCCESS_ANDROID; then
     RESULT_LINES="${RESULT_LINES}\n  ${GREEN}  ✅  Android  →  build/app/outputs/bundle/release/${RESET}"
     open build/app/outputs/bundle/release/ 2>/dev/null
@@ -188,6 +223,10 @@ fi
 
 if $HAS_ERROR; then
   error_banner "BUILD FAILED"
+  if [ "$BUMP" != "Rebuild" ]; then
+    sed -i.bak "s/^version: .*/version: $CUR/" pubspec.yaml
+    rm -f pubspec.yaml.bak
+  fi
 else
   success_banner "BUILD COMPLETE"
 fi
@@ -195,12 +234,14 @@ fi
 echo -e "${BOLD}  Summary${RESET}"
 echo -e "  ─────────────────────────────────────────"
 echo -e "  ${DIM}Version${RESET}     ${BOLD}$NEW_VER${RESET}"
+if $HAS_ERROR; then
+  echo -e "  ${DIM}Restored${RESET}    ${YELLOW}$CUR${RESET} (rolled back on failure)"
+fi
 echo -e "  ${DIM}Duration${RESET}    $(elapsed $TOTAL_TIME)"
 echo -e "${RESULT_LINES}"
 echo -e "  ─────────────────────────────────────────"
 echo ""
 
-# ─── Sound + Notification ───
 if $HAS_ERROR; then
   afplay /System/Library/Sounds/Basso.aiff 2>/dev/null &
   osascript <<EOT
