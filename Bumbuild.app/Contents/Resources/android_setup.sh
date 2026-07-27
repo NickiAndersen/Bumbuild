@@ -179,6 +179,9 @@ EOT
       end try
 EOT
     )
+    echo "Raw ALIAS from AppleScript: [$ALIAS]"
+    ALIAS=$(echo "$ALIAS" | xargs)
+    echo "Trimmed ALIAS: [$ALIAS]"
     if [ -z "$ALIAS" ]; then echo "ERROR: no alias selected"; exit 1; fi
     echo "Selected alias: $ALIAS"
   fi
@@ -266,6 +269,9 @@ EOT
       end try
 EOT
     )
+    echo "Raw ALIAS from AppleScript: [$ALIAS]"
+    ALIAS=$(echo "$ALIAS" | xargs)
+    echo "Trimmed ALIAS: [$ALIAS]"
     if [ -z "$ALIAS" ]; then echo "ERROR: no alias selected"; exit 1; fi
     echo "Selected alias: $ALIAS"
   fi
