@@ -213,7 +213,7 @@ EOT
         if [ -f "android/key.properties" ]; then
           ANDROID_READY=true
         else
-          osascript -e 'display alert "Setup Incomplete" message "Signing setup did not complete. Check the Terminal window for error details." as critical'
+          osascript -e 'display alert "Setup Incomplete" message "Signing was not configured. Make sure Java JDK is installed. Check build/bumbuild.log for details." as critical'
         fi
       fi
     else

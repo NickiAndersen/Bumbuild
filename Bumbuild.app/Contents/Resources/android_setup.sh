@@ -107,13 +107,12 @@ EOT
   # Validate and get aliases
   KEYTOOL_OUT=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>&1)
   KEYTOOL_EXIT=$?
+  mkdir -p build
+  echo "$KEYTOOL_OUT" >> build/bumbuild.log
   ALIAS_LIST=$(echo "$KEYTOOL_OUT" | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
   if [ -z "$ALIAS_LIST" ]; then
     if [ "$KEYTOOL_EXIT" -ne 0 ]; then
-      KEYTOOL_ERR=$(echo "$KEYTOOL_OUT" | tail -3 | tr '\n' ' ')
-      osascript -e "display alert \"Keystore Error\" message \"keytool failed:
-
-$KEYTOOL_ERR\" as critical"
+      osascript -e 'display alert "Invalid Password" message "The password is incorrect, or the keystore file is corrupted." as critical'
     else
       osascript -e 'display alert "No Keys Found" message "The keystore file does not contain any private key entries." as critical'
     fi
@@ -187,13 +186,12 @@ EOT
   # Validate and get aliases
   KEYTOOL_OUT=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>&1)
   KEYTOOL_EXIT=$?
+  mkdir -p build
+  echo "$KEYTOOL_OUT" >> build/bumbuild.log
   ALIAS_LIST=$(echo "$KEYTOOL_OUT" | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
   if [ -z "$ALIAS_LIST" ]; then
     if [ "$KEYTOOL_EXIT" -ne 0 ]; then
-      KEYTOOL_ERR=$(echo "$KEYTOOL_OUT" | tail -3 | tr '\n' ' ')
-      osascript -e "display alert \"Keystore Error\" message \"keytool failed:
-
-$KEYTOOL_ERR\" as critical"
+      osascript -e 'display alert "Invalid Password" message "The password is incorrect, or the keystore file is corrupted." as critical'
     else
       osascript -e 'display alert "No Keys Found" message "The keystore file does not contain any private key entries." as critical'
     fi
@@ -302,10 +300,7 @@ EOT
   KEYTOOL_EXIT=$?
 
   if [ $KEYTOOL_EXIT -ne 0 ]; then
-    KEYTOOL_ERR=$(echo "$KEYTOOL_OUT" | tail -3 | tr '\n' ' ')
-    osascript -e "display alert \"Keystore Creation Failed\" message \"keytool failed:
-
-$KEYTOOL_ERR\" as critical"
+    osascript -e 'display alert "Keystore Failed" message "Could not create the keystore. Check that Java JDK is installed." as critical'
     exit 1
   fi
 
