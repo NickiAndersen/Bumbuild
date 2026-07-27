@@ -209,6 +209,7 @@ EOT
           exit 0
         fi
       else
+        mkdir -p "$PROJECT_DIR/build"
         "$RESOURCES/android_setup.sh" "$PROJECT_DIR" "$TOOL_DIR" > "$PROJECT_DIR/build/bumbuild.log" 2>&1
         if [ -f "android/key.properties" ]; then
           ANDROID_READY=true
