@@ -210,7 +210,11 @@ EOT
         fi
       else
         "$RESOURCES/android_setup.sh" "$PROJECT_DIR" "$TOOL_DIR"
-        [ -f "android/key.properties" ] && ANDROID_READY=true
+        if [ -f "android/key.properties" ]; then
+          ANDROID_READY=true
+        else
+          osascript -e 'display alert "Setup Incomplete" message "Signing setup did not complete. Check the Terminal window for error details." as critical'
+        fi
       fi
     else
       CUR_ALIAS=$(grep "keyAlias" android/key.properties 2>/dev/null | sed 's/keyAlias=//')

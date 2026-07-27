@@ -5,6 +5,11 @@ TOOL_DIR="$2"
 KEYS_DIR="$TOOL_DIR/keys"
 cd "$PROJECT_DIR"
 
+if ! command -v keytool &>/dev/null; then
+  osascript -e 'display alert "keytool Not Found" message "Java JDK is required to manage keystores. Install it first." as critical'
+  exit 1
+fi
+
 APP_NAME=$(grep "^name:" pubspec.yaml | sed "s/name: *//" | head -1)
 mkdir -p "$KEYS_DIR"
 
@@ -100,7 +105,7 @@ EOT
   if [ -z "$STORE_PASS" ]; then exit 1; fi
 
   # Validate and get aliases
-  ALIAS_LIST=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>/dev/null | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
+  ALIAS_LIST=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>&1 | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
   if [ -z "$ALIAS_LIST" ]; then
     osascript -e 'display alert "❌ Invalid Password" message "Wrong password, or no keys found in the keystore file." as critical'
     exit 1
@@ -170,7 +175,7 @@ EOT
   )
   if [ -z "$STORE_PASS" ]; then exit 1; fi
 
-  ALIAS_LIST=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>/dev/null | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
+  ALIAS_LIST=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>&1 | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
   if [ -z "$ALIAS_LIST" ]; then
     osascript -e 'display alert "❌ Invalid Password" message "Wrong password, or no keys found in the keystore file." as critical'
     exit 1
@@ -265,11 +270,6 @@ EOT
     KEYSTORE="$KEYS_DIR/upload-keystore-${COUNTER}.jks"
   fi
 
-  if ! command -v keytool &>/dev/null; then
-    osascript -e 'display alert "❌ keytool Not Found" message "Java JDK is required to create a keystore. Install it first." as critical'
-    exit 1
-  fi
-
   keytool -genkey -v \
     -keystore "$KEYSTORE" \
     -keyalg RSA \
@@ -279,7 +279,7 @@ EOT
     -storepass "$STORE_PASS" \
     -keypass "$KEY_PASS" \
     -dname "CN=$APP_NAME, O=$APP_NAME" \
-    2>/dev/null
+    2>&1
 
   if [ $? -ne 0 ]; then
     osascript -e 'display alert "❌ Error" message "Could not create keystore." as critical'
