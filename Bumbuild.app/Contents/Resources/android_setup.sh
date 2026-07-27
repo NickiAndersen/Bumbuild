@@ -153,10 +153,13 @@ EOT
   fi
 
   ALIAS_COUNT=$(echo "$ALIAS_LIST" | wc -l | tr -d ' ')
+  echo "Found $ALIAS_COUNT alias(es)"
   if [ "$ALIAS_COUNT" -eq 1 ]; then
     ALIAS=$(echo "$ALIAS_LIST" | head -1 | xargs)
+    echo "Auto-selected alias: $ALIAS"
     osascript -e "display notification \"Using alias: $ALIAS\" with title \"Android Signing\""
   else
+    echo "Multiple aliases, showing selection dialog..."
     APPLESCRIPT_LIST=""
     FIRST=""
     while IFS= read -r line; do
@@ -176,9 +179,11 @@ EOT
       end try
 EOT
     )
-    if [ -z "$ALIAS" ]; then exit 1; fi
+    if [ -z "$ALIAS" ]; then echo "ERROR: no alias selected"; exit 1; fi
+    echo "Selected alias: $ALIAS"
   fi
 
+  echo "Prompting for key password..."
   KEY_PASS=$(osascript <<EOT
     try
       display dialog "Key password (usually same as keystore):" default answer "$STORE_PASS" with hidden answer with title "🔑 Key Password"
@@ -188,7 +193,8 @@ EOT
     end try
 EOT
   )
-  if [ -z "$KEY_PASS" ]; then exit 1; fi
+  if [ -z "$KEY_PASS" ]; then echo "ERROR: no key password"; exit 1; fi
+  echo "Key password entered"
 
 # ═══════════════════════════════════════════════════
 #  CHOOSE EXISTING FILE (Browse)
@@ -234,10 +240,13 @@ EOT
   fi
 
   ALIAS_COUNT=$(echo "$ALIAS_LIST" | wc -l | tr -d ' ')
+  echo "Found $ALIAS_COUNT alias(es)"
   if [ "$ALIAS_COUNT" -eq 1 ]; then
     ALIAS=$(echo "$ALIAS_LIST" | head -1 | xargs)
+    echo "Auto-selected alias: $ALIAS"
     osascript -e "display notification \"Found alias: $ALIAS\" with title \"Android Signing\""
   else
+    echo "Multiple aliases, showing selection dialog..."
     APPLESCRIPT_LIST=""
     FIRST=""
     while IFS= read -r line; do
@@ -257,9 +266,11 @@ EOT
       end try
 EOT
     )
-    if [ -z "$ALIAS" ]; then exit 1; fi
+    if [ -z "$ALIAS" ]; then echo "ERROR: no alias selected"; exit 1; fi
+    echo "Selected alias: $ALIAS"
   fi
 
+  echo "Prompting for key password..."
   KEY_PASS=$(osascript <<EOT
     try
       display dialog "Key password (usually same as keystore):" default answer "$STORE_PASS" with hidden answer with title "🔑 Key Password"
@@ -269,7 +280,8 @@ EOT
     end try
 EOT
   )
-  if [ -z "$KEY_PASS" ]; then exit 1; fi
+  if [ -z "$KEY_PASS" ]; then echo "ERROR: no key password"; exit 1; fi
+  echo "Key password entered"
 
   # Offer to copy into keys/ folder for portability
   KEYSTORE_NAME=$(basename "$KEYSTORE")
