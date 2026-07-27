@@ -209,11 +209,12 @@ EOT
           exit 0
         fi
       else
-        "$RESOURCES/android_setup.sh" "$PROJECT_DIR" "$TOOL_DIR"
+        "$RESOURCES/android_setup.sh" "$PROJECT_DIR" "$TOOL_DIR" > "$PROJECT_DIR/build/bumbuild.log" 2>&1
         if [ -f "android/key.properties" ]; then
           ANDROID_READY=true
         else
-          osascript -e 'display alert "Setup Incomplete" message "Signing was not configured. Make sure Java JDK is installed. Check build/bumbuild.log for details." as critical'
+          osascript -e 'display alert "Setup Incomplete" message "The log will open with error details." as critical'
+          open "$PROJECT_DIR/build/bumbuild.log" 2>/dev/null
         fi
       fi
     else

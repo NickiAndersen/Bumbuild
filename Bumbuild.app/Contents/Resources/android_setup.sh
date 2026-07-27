@@ -105,10 +105,9 @@ EOT
   if [ -z "$STORE_PASS" ]; then exit 1; fi
 
   # Validate and get aliases
-  KEYTOOL_OUT=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>&1)
+  KEYTOOL_OUT=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>/dev/null)
   KEYTOOL_EXIT=$?
   mkdir -p build
-  echo "$KEYTOOL_OUT" >> build/bumbuild.log
   ALIAS_LIST=$(echo "$KEYTOOL_OUT" | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
   if [ -z "$ALIAS_LIST" ]; then
     if [ "$KEYTOOL_EXIT" -ne 0 ]; then
@@ -184,10 +183,9 @@ EOT
   if [ -z "$STORE_PASS" ]; then exit 1; fi
 
   # Validate and get aliases
-  KEYTOOL_OUT=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>&1)
+  KEYTOOL_OUT=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>/dev/null)
   KEYTOOL_EXIT=$?
   mkdir -p build
-  echo "$KEYTOOL_OUT" >> build/bumbuild.log
   ALIAS_LIST=$(echo "$KEYTOOL_OUT" | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
   if [ -z "$ALIAS_LIST" ]; then
     if [ "$KEYTOOL_EXIT" -ne 0 ]; then
@@ -296,7 +294,7 @@ EOT
     -storepass "$STORE_PASS" \
     -keypass "$KEY_PASS" \
     -dname "CN=$APP_NAME, O=$APP_NAME" \
-    2>&1)
+    2>/dev/null)
   KEYTOOL_EXIT=$?
 
   if [ $KEYTOOL_EXIT -ne 0 ]; then
