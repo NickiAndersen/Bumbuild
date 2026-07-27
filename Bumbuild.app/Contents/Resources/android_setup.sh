@@ -105,9 +105,18 @@ EOT
   if [ -z "$STORE_PASS" ]; then exit 1; fi
 
   # Validate and get aliases
-  ALIAS_LIST=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>&1 | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
+  KEYTOOL_OUT=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>&1)
+  KEYTOOL_EXIT=$?
+  ALIAS_LIST=$(echo "$KEYTOOL_OUT" | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
   if [ -z "$ALIAS_LIST" ]; then
-    osascript -e 'display alert "❌ Invalid Password" message "Wrong password, or no keys found in the keystore file." as critical'
+    if [ "$KEYTOOL_EXIT" -ne 0 ]; then
+      KEYTOOL_ERR=$(echo "$KEYTOOL_OUT" | tail -3 | tr '\n' ' ')
+      osascript -e "display alert \"Keystore Error\" message \"keytool failed:
+
+$KEYTOOL_ERR\" as critical"
+    else
+      osascript -e 'display alert "No Keys Found" message "The keystore file does not contain any private key entries." as critical'
+    fi
     exit 1
   fi
 
@@ -175,9 +184,19 @@ EOT
   )
   if [ -z "$STORE_PASS" ]; then exit 1; fi
 
-  ALIAS_LIST=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>&1 | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
+  # Validate and get aliases
+  KEYTOOL_OUT=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>&1)
+  KEYTOOL_EXIT=$?
+  ALIAS_LIST=$(echo "$KEYTOOL_OUT" | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
   if [ -z "$ALIAS_LIST" ]; then
-    osascript -e 'display alert "❌ Invalid Password" message "Wrong password, or no keys found in the keystore file." as critical'
+    if [ "$KEYTOOL_EXIT" -ne 0 ]; then
+      KEYTOOL_ERR=$(echo "$KEYTOOL_OUT" | tail -3 | tr '\n' ' ')
+      osascript -e "display alert \"Keystore Error\" message \"keytool failed:
+
+$KEYTOOL_ERR\" as critical"
+    else
+      osascript -e 'display alert "No Keys Found" message "The keystore file does not contain any private key entries." as critical'
+    fi
     exit 1
   fi
 
@@ -270,7 +289,7 @@ EOT
     KEYSTORE="$KEYS_DIR/upload-keystore-${COUNTER}.jks"
   fi
 
-  keytool -genkey -v \
+  KEYTOOL_OUT=$(keytool -genkey -v \
     -keystore "$KEYSTORE" \
     -keyalg RSA \
     -keysize 2048 \
@@ -279,10 +298,14 @@ EOT
     -storepass "$STORE_PASS" \
     -keypass "$KEY_PASS" \
     -dname "CN=$APP_NAME, O=$APP_NAME" \
-    2>&1
+    2>&1)
+  KEYTOOL_EXIT=$?
 
-  if [ $? -ne 0 ]; then
-    osascript -e 'display alert "❌ Error" message "Could not create keystore." as critical'
+  if [ $KEYTOOL_EXIT -ne 0 ]; then
+    KEYTOOL_ERR=$(echo "$KEYTOOL_OUT" | tail -3 | tr '\n' ' ')
+    osascript -e "display alert \"Keystore Creation Failed\" message \"keytool failed:
+
+$KEYTOOL_ERR\" as critical"
     exit 1
   fi
 
