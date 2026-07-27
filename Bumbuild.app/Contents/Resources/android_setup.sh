@@ -5,10 +5,40 @@ TOOL_DIR="$2"
 KEYS_DIR="$TOOL_DIR/keys"
 cd "$PROJECT_DIR"
 
+echo "=== Bumbuild Android Signing Setup ==="
+echo "Project: $PROJECT_DIR"
+echo "Tool dir: $TOOL_DIR"
+
+# Find Java keytool in PATH or common locations
 if ! command -v keytool &>/dev/null; then
+  echo "keytool not in PATH, searching..."
+  KTPATH=""
+  for jdk_root in /usr/bin /opt/homebrew/opt/openjdk*/bin /usr/local/opt/openjdk*/bin /Library/Java/JavaVirtualMachines/*/Contents/Home/bin; do
+    for kt in "$jdk_root"/keytool; do
+      if [ -x "$kt" ]; then
+        KTPATH="$jdk_root"
+        export PATH="$KTPATH:$PATH"
+        break 2
+      fi
+    done
+  done
+  if [ -z "$KTPATH" ]; then
+    LOGIN_KT=$(bash -l -c 'which keytool' 2>/dev/null)
+    if [ -n "$LOGIN_KT" ]; then
+      export PATH="$(dirname "$LOGIN_KT"):$PATH"
+      echo "Found via login shell: $(which keytool)"
+    fi
+  else
+    echo "Found keytool at: $(which keytool)"
+  fi
+fi
+
+if ! command -v keytool &>/dev/null; then
+  echo "ERROR: keytool not found after searching common locations"
   osascript -e 'display alert "keytool Not Found" message "Java JDK is required to manage keystores. Install it first." as critical'
   exit 1
 fi
+echo "keytool: $(which keytool)"
 
 APP_NAME=$(grep "^name:" pubspec.yaml | sed "s/name: *//" | head -1)
 mkdir -p "$KEYS_DIR"
@@ -22,6 +52,7 @@ for f in "$KEYS_DIR"/*.jks "$KEYS_DIR"/*.keystore; do
   FOUND_COUNT=$((FOUND_COUNT + 1))
 done
 FOUND_KEYS=$(echo "$FOUND_KEYS" | sed '/^$/d')
+echo "Found $FOUND_COUNT keystore(s) in keys/"
 
 # ─── Step 1: Choose source ───
 if [ "$FOUND_COUNT" -gt 0 ]; then
@@ -102,15 +133,18 @@ EOT
     end try
 EOT
   )
-  if [ -z "$STORE_PASS" ]; then exit 1; fi
+  if [ -z "$STORE_PASS" ]; then echo "ERROR: no password"; exit 1; fi
 
   # Validate and get aliases
+  echo "Validating keystore: $KEYSTORE"
   KEYTOOL_OUT=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>/dev/null)
   KEYTOOL_EXIT=$?
+  echo "keytool exit code: $KEYTOOL_EXIT"
   mkdir -p build
   ALIAS_LIST=$(echo "$KEYTOOL_OUT" | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
   if [ -z "$ALIAS_LIST" ]; then
     if [ "$KEYTOOL_EXIT" -ne 0 ]; then
+      echo "ERROR: keytool validation failed (exit $KEYTOOL_EXIT)"
       osascript -e 'display alert "Invalid Password" message "The password is incorrect, or the keystore file is corrupted." as critical'
     else
       osascript -e 'display alert "No Keys Found" message "The keystore file does not contain any private key entries." as critical'
@@ -180,15 +214,18 @@ EOT
     end try
 EOT
   )
-  if [ -z "$STORE_PASS" ]; then exit 1; fi
+  if [ -z "$STORE_PASS" ]; then echo "ERROR: no password"; exit 1; fi
 
   # Validate and get aliases
+  echo "Validating keystore: $KEYSTORE"
   KEYTOOL_OUT=$(keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" 2>/dev/null)
   KEYTOOL_EXIT=$?
+  echo "keytool exit code: $KEYTOOL_EXIT"
   mkdir -p build
   ALIAS_LIST=$(echo "$KEYTOOL_OUT" | grep "PrivateKeyEntry\|SecretKeyEntry" | cut -d',' -f1)
   if [ -z "$ALIAS_LIST" ]; then
     if [ "$KEYTOOL_EXIT" -ne 0 ]; then
+      echo "ERROR: keytool validation failed (exit $KEYTOOL_EXIT)"
       osascript -e 'display alert "Invalid Password" message "The password is incorrect, or the keystore file is corrupted." as critical'
     else
       osascript -e 'display alert "No Keys Found" message "The keystore file does not contain any private key entries." as critical'
@@ -312,14 +349,17 @@ EOT
 fi
 
 # ─── Create key.properties ───
+echo "Writing android/key.properties..."
 cat > android/key.properties << KEYEOF
 storePassword=$STORE_PASS
 keyPassword=$KEY_PASS
 keyAlias=$ALIAS
 storeFile=$KEYSTORE
 KEYEOF
+echo "key.properties created"
 
 # ─── Patch build.gradle for release signing ───
+echo "Patching build.gradle for release signing..."
 GRADLE_KTS="android/app/build.gradle.kts"
 GRADLE_GROOVY="android/app/build.gradle"
 
@@ -442,3 +482,4 @@ osascript <<EOT
 
 Ready to build Android release!" as informational
 EOT
+echo "Signing setup complete"
