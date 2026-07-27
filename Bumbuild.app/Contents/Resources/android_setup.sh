@@ -160,34 +160,30 @@ EOT
     osascript -e "display notification \"Using alias: $ALIAS\" with title \"Android Signing\""
   else
     echo "Multiple aliases, showing selection dialog..."
-    APPLESCRIPT_LIST=""
     FIRST=""
+    ALIAS_BUTTONS=""
     while IFS= read -r line; do
       a=$(echo "$line" | xargs)
       [ -z "$FIRST" ] && FIRST="$a"
-      [ -n "$APPLESCRIPT_LIST" ] && APPLESCRIPT_LIST="$APPLESCRIPT_LIST, "
-      APPLESCRIPT_LIST="$APPLESCRIPT_LIST\"$a\""
+      [ -n "$ALIAS_BUTTONS" ] && ALIAS_BUTTONS="$ALIAS_BUTTONS, "
+      ALIAS_BUTTONS="$ALIAS_BUTTONS\"$a\""
     done <<< "$ALIAS_LIST"
 
     ALIAS=$(osascript <<EOT
       try
-        choose from list {$APPLESCRIPT_LIST} with prompt "Multiple keys found. Select the one to use for signing:" with title "🔑 Select Key Alias" default items {"$FIRST"}
-        if result is false then return ""
-        return item 1 of result
+        display dialog "Select the key alias to use:" buttons {"Cancel", $ALIAS_BUTTONS} default button "$FIRST" with title "Select Key Alias"
+        return button returned of result
       on error
         return ""
       end try
 EOT
     )
     echo "Raw ALIAS from AppleScript: [$ALIAS]"
-    ALIAS=$(echo "$ALIAS" | xargs)
-    echo "Trimmed ALIAS: [$ALIAS]"
-    if [ -z "$ALIAS" ]; then
-      ALIAS="$FIRST"
-      echo "Falling back to first alias: $ALIAS"
-    else
-      echo "Selected alias: $ALIAS"
+    if [ "$ALIAS" == "Cancel" ] || [ -z "$ALIAS" ]; then
+      echo "ERROR: no alias selected"
+      exit 1
     fi
+    echo "Selected alias: $ALIAS"
   fi
 
   echo "Prompting for key password..."
@@ -254,34 +250,30 @@ EOT
     osascript -e "display notification \"Found alias: $ALIAS\" with title \"Android Signing\""
   else
     echo "Multiple aliases, showing selection dialog..."
-    APPLESCRIPT_LIST=""
     FIRST=""
+    ALIAS_BUTTONS=""
     while IFS= read -r line; do
       a=$(echo "$line" | xargs)
       [ -z "$FIRST" ] && FIRST="$a"
-      [ -n "$APPLESCRIPT_LIST" ] && APPLESCRIPT_LIST="$APPLESCRIPT_LIST, "
-      APPLESCRIPT_LIST="$APPLESCRIPT_LIST\"$a\""
+      [ -n "$ALIAS_BUTTONS" ] && ALIAS_BUTTONS="$ALIAS_BUTTONS, "
+      ALIAS_BUTTONS="$ALIAS_BUTTONS\"$a\""
     done <<< "$ALIAS_LIST"
 
     ALIAS=$(osascript <<EOT
       try
-        choose from list {$APPLESCRIPT_LIST} with prompt "Multiple keys found. Select the one to use for signing:" with title "🔑 Select Key Alias" default items {"$FIRST"}
-        if result is false then return ""
-        return item 1 of result
+        display dialog "Select the key alias to use:" buttons {"Cancel", $ALIAS_BUTTONS} default button "$FIRST" with title "Select Key Alias"
+        return button returned of result
       on error
         return ""
       end try
 EOT
     )
     echo "Raw ALIAS from AppleScript: [$ALIAS]"
-    ALIAS=$(echo "$ALIAS" | xargs)
-    echo "Trimmed ALIAS: [$ALIAS]"
-    if [ -z "$ALIAS" ]; then
-      ALIAS="$FIRST"
-      echo "Falling back to first alias: $ALIAS"
-    else
-      echo "Selected alias: $ALIAS"
+    if [ "$ALIAS" == "Cancel" ] || [ -z "$ALIAS" ]; then
+      echo "ERROR: no alias selected"
+      exit 1
     fi
+    echo "Selected alias: $ALIAS"
   fi
 
   echo "Prompting for key password..."
